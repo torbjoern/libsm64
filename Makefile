@@ -55,9 +55,16 @@ $(BUILD_DIR)/test/%.o: test/%.c
 	@$(CC) $(CFLAGS) -MM -MP -MT $@ -MF $(BUILD_DIR)/test/$*.d $<
 	$(CC) -c $(CFLAGS) -o $@ $<
 
-$(TEST_FILE): $(LIB_FILE) $(TEST_OBJS)
-	$(CC) -o $@ $(TEST_OBJS) $(LIB_FILE) -lGLEW -lGL -lSDL2 -lSDL2main -lm
+LINK_OPTIONS := -lGLEW32 -lopengl32 -lSDL2main -lSDL2 -lm
+ifeq ($(OS),Windows_NT)
+	LINK_OPTIONS := -lmingw32 -lGLEW32 -lopengl32 -lSDL2main -lSDL2  -lm -w -Wl,-subsystem,windows -mconsole -mwindows
+endif	
 
+#gcc -g -o ./run-test.exe test/*.c -lglew32 -lmingw32 -lsdl2main -lsdl2 -lm -lopengl32 sm64.dll -w -Wl,-subsystem,windows -mconsole -mwindows
+
+$(TEST_FILE): $(LIB_FILE) $(TEST_OBJS)
+	#$(CC) -o $@ $(TEST_OBJS) $(LIB_FILE) -lGLEW32 -lopengl32 -lSDL2main -lSDL2 -lm
+	$(CC) -o $@ $(TEST_OBJS) $(LIB_FILE) $(LINK_OPTIONS)  -w -Wl,-subsystem,windows
 
 lib: $(LIB_FILE) $(LIB_H_FILE)
 

@@ -53,17 +53,17 @@ typedef struct RenderState
 }
 RenderState;
 
-static const char *MARIO_SHADER =
+static const char *MARIO_SHADER_VERTEX =
+"\n "
 "\n uniform mat4 view;"
 "\n uniform mat4 projection;"
 "\n uniform sampler2D marioTex;"
 "\n "
-"\n v2f vec3 v_color;"
-"\n v2f vec3 v_normal;"
-"\n v2f vec3 v_light;"
-"\n v2f vec2 v_uv;"
+"\n out vec3 v_color;"
+"\n out vec3 v_normal;"
+"\n out vec3 v_light;"
+"\n out vec2 v_uv;"
 "\n "
-"\n #ifdef VERTEX"
 "\n "
 "\n     layout(location = 0) in vec3 position;"
 "\n     layout(location = 1) in vec3 normal;"
@@ -80,8 +80,19 @@ static const char *MARIO_SHADER =
 "\n         gl_Position = projection * view * vec4( position, 1. );"
 "\n     }"
 "\n "
-"\n #endif"
-"\n #ifdef FRAGMENT"
+;
+
+static const char *MARIO_SHADER_FRAGMENT =
+"\n "
+"\n uniform mat4 view;"
+"\n uniform mat4 projection;"
+"\n uniform sampler2D marioTex;"
+"\n "
+"\n in vec3 v_color;"
+"\n in vec3 v_normal;"
+"\n in vec3 v_light;"
+"\n in vec2 v_uv;"
+"\n "
 "\n "
 "\n     out vec4 color;"
 "\n "
@@ -93,7 +104,7 @@ static const char *MARIO_SHADER =
 "\n         color = vec4( mainColor * light, 1 );"
 "\n     }"
 "\n "
-"\n #endif"
+"\n "
 ;
 static const char *WORLD_SHADER =
 "\n uniform mat4 model;"
@@ -147,6 +158,7 @@ static const char *WORLD_SHADER =
 "\n     }"
 "\n "
 "\n #endif"
+"\n "
 ;
 
 uint8_t *utils_read_file_alloc( const char *path, size_t *fileLength )
@@ -171,20 +183,25 @@ uint8_t *utils_read_file_alloc( const char *path, size_t *fileLength )
 static GLuint shader_compile( const char *shaderContents, size_t shaderContentsLength, GLenum shaderType )
 {
     const GLchar *shaderDefine = shaderType == GL_VERTEX_SHADER 
-        ? "\n#version 410\n#define VERTEX  \n#define v2f out\n" 
-        : "\n#version 410\n#define FRAGMENT\n#define v2f in \n";
+        ? "\n#version 330 core\n#define VERTEX  \n#define v2f out\n" 
+        : "\n#version 330 core\n#define FRAGMENT\n#define v2f in \n";
 
     const GLchar *shaderStrings[2] = { shaderDefine, shaderContents };
     GLint shaderStringLengths[2] = { strlen( shaderDefine ), (GLint)shaderContentsLength };
 
+SDL_Log("glCreateShader");
     GLuint shader = glCreateShader( shaderType );
+	SDL_Log("glShaderSource");
     glShaderSource( shader, 2, shaderStrings, shaderStringLengths );
+	SDL_Log("glCompileShader");
     glCompileShader( shader );
 
     GLint isCompiled;
+	SDL_Log("glGetShaderiv GL_COMPILE_STATUS");
     glGetShaderiv( shader, GL_COMPILE_STATUS, &isCompiled );
     if( isCompiled == GL_FALSE ) 
     {
+	SDL_Log("shader compile fail");
         GLint maxLength;
         glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &maxLength );
         char *log = (char*)malloc( maxLength );
@@ -197,11 +214,11 @@ static GLuint shader_compile( const char *shaderContents, size_t shaderContentsL
     return shader;
 }
 
-static GLuint shader_load( const char *shaderContents )
+static GLuint shader_load( const char *vs, const char *fs )
 {
     GLuint result;
-    GLuint vert = shader_compile( shaderContents, strlen( shaderContents ), GL_VERTEX_SHADER );
-    GLuint frag = shader_compile( shaderContents, strlen( shaderContents ), GL_FRAGMENT_SHADER );
+    GLuint vert = shader_compile( vs, strlen( vs ), GL_VERTEX_SHADER );
+    GLuint frag = shader_compile( fs, strlen( fs ), GL_FRAGMENT_SHADER );
 
     GLuint ref = glCreateProgram();
     glAttachShader( ref, vert );
@@ -322,8 +339,11 @@ static void update_mario_mesh( MarioMesh *mesh, struct SM64MarioGeometryBuffers 
 void render_state_init( RenderState *renderState, uint8_t *marioTexture )
 {
     load_collision_mesh( &renderState->collision );
-    renderState->world_shader = shader_load( WORLD_SHADER );
-    renderState->mario_shader = shader_load( MARIO_SHADER );
+	SDL_Log("load mario shader\n");
+    renderState->mario_shader = shader_load( MARIO_SHADER_VERTEX, MARIO_SHADER_FRAGMENT );
+	SDL_Log("load world shader\n");
+    renderState->world_shader = shader_load( WORLD_SHADER, WORLD_SHADER );
+	
 
     glEnable( GL_CULL_FACE );
     glCullFace( GL_BACK );
@@ -378,10 +398,12 @@ static float read_axis( int16_t val )
     return result > 0.0f ? (result - 0.2f) / 0.8f : (result + 0.2f) / 0.8f;
 }
 
-int main( void )
+//int main( int argc, char** argv )
+int SDL_main(int argc, char** argv)
 {
     size_t romSize;
 
+SDL_Log("load rom\n");
     uint8_t *rom = utils_read_file_alloc( "baserom.us.z64", &romSize );
 
     if( rom == NULL )
@@ -397,15 +419,22 @@ int main( void )
     sm64_static_surfaces_load( surfaces, surfaces_count );
     uint32_t marioId = sm64_mario_create( 0, 1000, 0 );
 
+
     free( rom );
+	SDL_Log("freed rom\n");
 
     RenderState renderState;
     renderState.mario.index = NULL;
     vec3 cameraPos = { 0, 0, 0 };
     float cameraRot = 0.0f;
 
+	SDL_Log("ctx initing...\n");
     context_init( "libsm64", WINDOW_WIDTH, WINDOW_HEIGHT );
+	SDL_Log("ctx rdy!\n");
+	
+	SDL_Log("renderstate initing...\n");
     render_state_init( &renderState, texture );
+	
 
     struct timespec ts;
     ts.tv_sec = 0;
@@ -419,7 +448,7 @@ int main( void )
     marioGeometry.color    = malloc( sizeof(float) * 9 * SM64_GEO_MAX_TRIANGLES );
     marioGeometry.normal   = malloc( sizeof(float) * 9 * SM64_GEO_MAX_TRIANGLES );
     marioGeometry.uv       = malloc( sizeof(float) * 6 * SM64_GEO_MAX_TRIANGLES );
-
+SDL_Log("starting main loop!\n");
     do
     {
         uint64_t frameTopTime = ns_clock();
